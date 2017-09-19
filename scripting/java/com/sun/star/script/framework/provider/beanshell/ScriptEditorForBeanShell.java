@@ -48,8 +48,13 @@ import javax.swing.JPanel;
 
 import javax.swing.JToolBar;
 import javax.swing.BorderFactory;
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
+import java.io.File;
+import java.io.IOException;
 
-public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
+public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener{
 
     private JFrame frame;
     private String filename;
@@ -273,25 +278,128 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
         }
         );
 
-        String[] labels = {"Run", "Clear", "Save", "Close","Undo","Redo"};
-        JToolBar toolbar = new JToolBar();
-        toolbar.setRollover(true);
-        for (String label : labels) {
-            JButton b = new JButton(label);
-            b.setToolTipText(label);
-            b.addActionListener(this);
-            toolbar.add(b);
-            toolbar.addSeparator();
-            if (label.equals("Save") && filename == null) {
-                b.setEnabled(false);
-            }
+//*----------------------------------------------------------------------
+        String run = "Icons/run.png";
+        String clear = "Icons/delete.png";
+        String save = "Icons/save.png";
+        String close = "Icons/close.png";
+        String undo = "Icons/undo.png";
+        String redo = "Icons/redo.png";
+        JToolBar toolBar = new JToolBar();
+        toolBar.setRollover(true);
+
+        ImageIcon runIcon = null;
+        ImageIcon clearIcon = null;
+        ImageIcon saveIcon = null;
+        ImageIcon closeIcon = null;
+        ImageIcon undoIcon = null;
+        ImageIcon redoIcon = null;
+
+        try{
+            runIcon = new ImageIcon(getClass().getClassLoader().getResource(run));
+        }catch(Exception ex){
+            System.out.println(ex);
         }
 
+
+        try{
+            clearIcon = new ImageIcon(getClass().getClassLoader().getResource(clear));
+        }catch(Exception ex){
+            System.out.println(ex);
+        }
+
+
+        try{
+            saveIcon = new ImageIcon(getClass().getClassLoader().getResource(save));
+        }catch(Exception ex){
+            System.out.println(ex);
+        }
+
+
+        try{
+            closeIcon = new ImageIcon(getClass().getClassLoader().getResource(close));
+        }catch(Exception ex){
+            System.out.println(ex);
+        }
+
+
+        try{
+            undoIcon = new ImageIcon(getClass().getClassLoader().getResource(undo));
+        }catch(Exception ex){
+            System.out.println(ex);
+        }
+
+
+        try{
+            redoIcon = new ImageIcon(getClass().getClassLoader().getResource(redo));
+        }catch(Exception ex){
+            System.out.println(ex);
+        }
+
+        Action runAction = new AbstractAction("run",runIcon){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                try{
+                    execute();
+                }catch(Exception invokeException){
+                    showErrorMessage(invokeException.getMessage());
+                }
+
+            }
+        };
+
+        Action clearAction = new AbstractAction("clear",clearIcon){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                view.clear();
+            }
+        };
+
+        Action saveAction = new AbstractAction("save", saveIcon){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                saveTextArea();
+
+            }
+        };
+
+        Action closeAction = new AbstractAction("close",closeIcon){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                doClose();
+
+            }
+        };
+
+        Action undoAction = new AbstractAction("undo",undoIcon){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                view.undo();
+            }
+        };
+
+        Action redoAction = new AbstractAction("redo",redoIcon){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                view.redo();
+            }
+        };
+
+        toolBar.add(runAction);
+        toolBar.add(clearAction);
+        toolBar.add(saveAction);
+        toolBar.add(undoAction);
+        toolBar.add(redoAction);
+        toolBar.add(closeAction);
+        toolBar.addSeparator();
+
         frame.getContentPane().add((JComponent)view, BorderLayout.CENTER);
-        frame.add(toolbar, BorderLayout.NORTH);
+        frame.add(toolBar, BorderLayout.NORTH);
         frame.pack();
         frame.setSize(590, 480);
         frame.setLocation(300, 200);
+//*----------------------------------------------------------------------
+
     }
 
     private void doClose() {
@@ -367,23 +475,6 @@ public class ScriptEditorForBeanShell implements ScriptEditor, ActionListener {
     }
 
     public void actionPerformed(ActionEvent e) {
-        String actionCommand = e.getActionCommand();
-        if (actionCommand.equals("Run")) {
-            try {
-                execute();
-            } catch (Exception invokeException) {
-                showErrorMessage(invokeException.getMessage());
-            }
-        } else if (actionCommand.equals("Close")) {
-            doClose();
-        } else if (actionCommand.equals("Save")) {
-            saveTextArea();
-        } else if (actionCommand.equals("Clear")) {
-            view.clear();
-        } else if(actionCommand.equals("Undo")){
-            view.undo();
-        } else if(actionCommand.equals("Redo")){
-            view.redo();
-        }
+
     }
 }

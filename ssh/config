@@ -1,0 +1,5 @@
+Host logerrit gerrit.libreoffice.org
+    IdentityFile ~/.ssh/id_rsa
+    User rama
+    Port 29418
+    HostName gerrit.libreoffice.org
